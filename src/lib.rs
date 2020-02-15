@@ -34,6 +34,18 @@ impl Key<u32> for EventTypeOneFieldOne {
     }
 }
 
+pub struct EventTypeOneFieldTwo;
+
+impl Key<f32> for EventTypeOneFieldTwo {
+    fn check(&self, event: &Event) -> Option<f32> {
+        if let Event::EventTypeOne(matching_event) = event {
+            return Some(matching_event.field_two)
+        }
+
+        None
+    }
+}
+
 pub struct EventTypeTwoFieldTwo;
 
 impl Key<u32> for EventTypeTwoFieldTwo {
@@ -125,6 +137,17 @@ pub struct ContinuousExpect<D, G, T>
     state: ExpectState,
 }
 
+pub struct TriggeredExpect<D, G, W, T>
+    where D: Display, G: Condition, W: Condition, T: Condition
+{
+    description: D,
+    given: G,
+    given_satisfied_time: Option<SystemTime>,
+    when: W,
+    then: T,
+    state: ExpectState,
+}
+
 impl<D, G, T> Expect for ContinuousExpect<D, G, T>
     where D: Display, G: Condition, T: Condition
 {
@@ -162,6 +185,14 @@ impl<D, G, T> Expect for ContinuousExpect<D, G, T>
     }
 }
 
+impl<D, G, W, T> Expect for TriggeredExpect<D, G, W, T>
+    where D: Display, G: Condition, W: Condition, T: Condition
+{
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState {
+        unimplemented!()
+    }
+}
+
 pub struct ExpectDescription<D> {
     description: D,
 }
@@ -169,6 +200,12 @@ pub struct ExpectDescription<D> {
 pub struct ExpectDescriptionGiven<D, G> {
     description: D,
     given: G,
+}
+
+pub struct ExpectDescriptionGivenWhen<D, G, W> {
+    description: D,
+    given: G,
+    when: W,
 }
 
 pub fn verify<D>(description: D) -> ExpectDescription<D> {
@@ -200,7 +237,33 @@ impl<D, G> ExpectDescriptionGiven<D, G>
             state: ExpectState::Unknown,
         }
     }
+
+    fn when<W>(self, when: W) -> ExpectDescriptionGivenWhen<D, G, W> {
+        ExpectDescriptionGivenWhen {
+            description: self.description,
+            given: self.given,
+            when,
+        }
+    }
 }
+
+impl<D, G, W> ExpectDescriptionGivenWhen<D, G, W>
+    where D: Display, G: Condition, W: Condition
+{
+    fn then<T>(self, then: T) -> TriggeredExpect<D, G, W, T>
+        where T: Condition
+    {
+        TriggeredExpect {
+            description: self.description,
+            given: self.given,
+            given_satisfied_time: None,
+            when: self.when,
+            then,
+            state: ExpectState::Unknown,
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -229,7 +292,7 @@ mod tests {
             ),
         ];
 
-        let mut expectation = expectations::example_expectation();
+        let mut expectation = expectations::example_continuous_expectation();
 
         assert_eq!(ExpectState::Unknown, expectation.process_event(&events[0]));
         assert_eq!(ExpectState::Satisfied, expectation.process_event(&events[1]));
