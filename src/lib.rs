@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::SystemTime};
 
 pub enum Event {
     EventTypeOne(EventTypeOne),
@@ -88,6 +88,20 @@ pub fn eq<K, T>(key: K, value: T) -> Eq<K,T>
     }
 }
 
+pub struct EventWithTimestamp {
+    event: Event,
+    timestamp: SystemTime,
+}
+
+impl EventWithTimestamp {
+    fn new(event: Event, timestamp: SystemTime) -> Self {
+        EventWithTimestamp {
+            event,
+            timestamp,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ExpectState {
     Satisfied,
@@ -96,7 +110,7 @@ pub enum ExpectState {
 }
 
 pub trait Expect {
-    fn process_event(&mut self, event: &Event) -> ExpectState;
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState;
 }
 
 pub struct ContinuousExpect<D, G, T>
@@ -104,6 +118,7 @@ pub struct ContinuousExpect<D, G, T>
 {
     description: D,
     given: G,
+    given_satisfied_time: Option<SystemTime>,
     then: T,
     state: ExpectState,
 }
@@ -111,11 +126,26 @@ pub struct ContinuousExpect<D, G, T>
 impl<D, G, T> Expect for ContinuousExpect<D, G, T>
     where D: Display, G: Condition, T: Condition
 {
-    fn process_event(&mut self, event: &Event) -> ExpectState {
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState {
+        let grace_period_ms = 5;
+
+        let EventWithTimestamp { event, timestamp } = event_with_ts;
         if self.given.process_event(event) == ConditionState::Satisfied {
+            if self.given_satisfied_time == None {
+                // the given has just transitioned from not satisfied to satisfied
+                self.given_satisfied_time = Some(*timestamp);
+            }
             match self.then.process_event(event) {
                 ConditionState::Satisfied => self.state = ExpectState::Satisfied,
-                ConditionState::Unsatisfied => self.state = ExpectState::Unsatisfied,
+                ConditionState::Unsatisfied => {
+                    if timestamp.duration_since(self.given_satisfied_time.expect("FIXME"))
+                        .expect("events should not be out of order")
+                        .as_millis() < grace_period_ms {
+                            self.state = ExpectState::Unknown;
+                    } else {
+                        self.state = ExpectState::Unsatisfied;
+                    }
+                },
             };
         }
 
@@ -156,6 +186,7 @@ impl<D, G> ExpectDescriptionGiven<D, G>
         ContinuousExpect {
             description: self.description,
             given: self.given,
+            given_satisfied_time: None,
             then,
             state: ExpectState::Unknown,
         }
@@ -166,14 +197,26 @@ impl<D, G> ExpectDescriptionGiven<D, G>
 mod tests {
     use super::*;
 
+    use std::{ops::Add, time::Duration};
+
+    fn ts(millis: u64) -> SystemTime {
+        SystemTime::UNIX_EPOCH.add(Duration::from_millis(millis))
+    }
+
     #[test]
     fn continuous_expect() {
         let events = vec![
-            Event::EventTypeOne(
-                EventTypeOne { field_one: 10, field_two: 1.23, }
+            EventWithTimestamp::new(
+                Event::EventTypeOne(
+                    EventTypeOne { field_one: 10, field_two: 1.23, }
+                ),
+                ts(0),
             ),
-            Event::EventTypeTwo(
-                EventTypeTwo { field_one: -10, field_two: 11, }
+            EventWithTimestamp::new(
+                Event::EventTypeTwo(
+                    EventTypeTwo { field_one: -10, field_two: 11, }
+                ),
+                ts(1),
             ),
         ];
 
@@ -181,10 +224,7 @@ mod tests {
             .given(eq(EventTypeOneFieldOne, 10))
             .then(eq(EventTypeTwoFieldTwo, 11));
 
-        // TODO add time data to events
-        // The expect should be unknown for some time after seeing the given, to
-        // allow time for then to become true
-        assert_eq!(ExpectState::Unsatisfied, expectation.process_event(&events[0]));
+        assert_eq!(ExpectState::Unknown, expectation.process_event(&events[0]));
         assert_eq!(ExpectState::Satisfied, expectation.process_event(&events[1]));
     }
 }
