@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::SystemTime};
+use std::{fmt::Display, time::{Duration, SystemTime}};
 
 mod expectations;
 
@@ -129,27 +129,34 @@ impl<D, G, T> Expect for ContinuousExpect<D, G, T>
     where D: Display, G: Condition, T: Condition
 {
     fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState {
-        let grace_period_ms = 5;
+        let grace_period = Duration::from_millis(5);
 
         let EventWithTimestamp { event, timestamp } = event_with_ts;
-        if self.given.process_event(event) == ConditionState::Satisfied {
-            if self.given_satisfied_time == None {
-                // the given has just transitioned from not satisfied to satisfied
-                self.given_satisfied_time = Some(*timestamp);
-            }
-            match self.then.process_event(event) {
-                ConditionState::Satisfied => self.state = ExpectState::Satisfied,
-                ConditionState::Unsatisfied => {
-                    if timestamp.duration_since(self.given_satisfied_time.expect("FIXME"))
-                        .expect("events should not be out of order")
-                        .as_millis() < grace_period_ms {
-                            self.state = ExpectState::Unknown;
-                    } else {
-                        self.state = ExpectState::Unsatisfied;
-                    }
-                },
-            };
+
+        if self.given.process_event(event) == ConditionState::Satisfied
+            && self.given_satisfied_time == None
+        {
+            // the given has just transitioned from not satisfied to satisfied
+            self.given_satisfied_time = Some(*timestamp);
         }
+
+        match (self.given_satisfied_time, self.then.process_event(event)) {
+            // Both given and then are satisfied
+            (Some(_), ConditionState::Satisfied) => self.state = ExpectState::Satisfied,
+            // Given is satisfied, but then is not satisfied
+            (Some(ts), ConditionState::Unsatisfied) => {
+                let time_elapsed_since_given_became_true = timestamp.duration_since(ts)
+                    .expect("events should not be out of order");
+
+                if time_elapsed_since_given_became_true < grace_period {
+                    self.state = ExpectState::Unknown;
+                } else {
+                    self.state = ExpectState::Unsatisfied;
+                }
+            },
+            // If the given is not satisfied we take no action
+            (None, _) => {},
+        };
 
         self.state
     }
@@ -199,7 +206,7 @@ impl<D, G> ExpectDescriptionGiven<D, G>
 mod tests {
     use super::*;
 
-    use std::{ops::Add, time::Duration};
+    use std::ops::Add;
 
     fn ts(millis: u64) -> SystemTime {
         SystemTime::UNIX_EPOCH.add(Duration::from_millis(millis))
