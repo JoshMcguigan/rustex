@@ -1,5 +1,7 @@
 use std::{fmt::Display, time::SystemTime};
 
+mod expectations;
+
 pub enum Event {
     EventTypeOne(EventTypeOne),
     EventTypeTwo(EventTypeTwo),
@@ -220,9 +222,7 @@ mod tests {
             ),
         ];
 
-        let mut expectation = verify("My first continuous expect")
-            .given(eq(EventTypeOneFieldOne, 10))
-            .then(eq(EventTypeTwoFieldTwo, 11));
+        let mut expectation = expectations::example_expectation();
 
         assert_eq!(ExpectState::Unknown, expectation.process_event(&events[0]));
         assert_eq!(ExpectState::Satisfied, expectation.process_event(&events[1]));
