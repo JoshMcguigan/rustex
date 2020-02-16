@@ -100,19 +100,31 @@ mod tests {
         }
     }
 
-    fn example_event_one() -> TestEvent {
-        TestEvent::TestEventOne(TestEventOne { field_a: 5, field_b: 11 })
+    fn example_event_one(field_a: u32, field_b: u32) -> TestEvent {
+        TestEvent::TestEventOne(TestEventOne { field_a, field_b })
     }
 
-    fn example_event_two() -> TestEvent {
-        TestEvent::TestEventTwo(TestEventTwo { field_a: 1 })
+    fn example_event_two(field_a: u32) -> TestEvent {
+        TestEvent::TestEventTwo(TestEventTwo { field_a })
     }
 
     #[test]
     fn equal() {
         let mut condition = eq(Event1FieldA, 5);
 
-        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_two()));
-        assert_eq!(ConditionState::Satisfied, condition.process_event(&example_event_one()));
+        // unsatisfied by unrelated event
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_two(1)));
+
+        // unsatisfied by related event with incorrect value
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_one(1, 1)));
+
+        // satisfied by related event with correct value
+        assert_eq!(ConditionState::Satisfied, condition.process_event(&example_event_one(5, 1)));
+
+        // stays satisfied when seeing unrelated event
+        assert_eq!(ConditionState::Satisfied, condition.process_event(&example_event_two(1)));
+
+        // returns to unsatisfied upon seeing related event with incorrect value
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_one(1, 1)));
     }
 }
