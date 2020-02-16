@@ -1,4 +1,6 @@
-use crate::{Event, Key};
+use crate::Key;
+
+use std::marker::PhantomData;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ConditionState {
@@ -6,22 +8,23 @@ pub enum ConditionState {
     Unsatisfied,
 }
 
-pub trait Condition {
-    fn process_event(&mut self, event: &Event) -> ConditionState;
+pub trait Condition<E> {
+    fn process_event(&mut self, event: &E) -> ConditionState;
 }
 
-pub struct Eq<K, T>
-    where K: Key<T>
+pub struct Eq<E, K, T>
+    where K: Key<E, T>
 {
     key: K,
     value: T,
     state: ConditionState,
+    marker: PhantomData<E>,
 }
 
-impl<K, T> Condition for Eq<K, T>
-    where K: Key<T>, T: PartialEq
+impl<E, K, T> Condition<E> for Eq<E, K, T>
+    where K: Key<E, T>, T: PartialEq
 {
-    fn process_event(&mut self, event: &Event) -> ConditionState {
+    fn process_event(&mut self, event: &E) -> ConditionState {
         if let Some(value) = self.key.check(event) {
             if self.value == value {
                 self.state = ConditionState::Satisfied;
@@ -34,12 +37,13 @@ impl<K, T> Condition for Eq<K, T>
     }
 }
 
-pub fn eq<K, T>(key: K, value: T) -> Eq<K,T>
-    where K: Key<T>
+pub fn eq<E, K, T>(key: K, value: T) -> Eq<E, K,T>
+    where K: Key<E, T>
 {
     Eq {
         key,
         value,
         state: ConditionState::Unsatisfied,
+        marker: PhantomData,
     }
 }

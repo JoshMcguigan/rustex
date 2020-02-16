@@ -25,13 +25,13 @@ pub struct EventTypeTwo {
     pub field_two: u32,
 }
 
-pub trait Key<T> {
-    fn check(&self, event: &Event) -> Option<T>;
+pub trait Key<E, T> {
+    fn check(&self, event: &E) -> Option<T>;
 }
 
 pub struct EventTypeOneFieldOne;
 
-impl Key<u32> for EventTypeOneFieldOne {
+impl Key<Event, u32> for EventTypeOneFieldOne {
     fn check(&self, event: &Event) -> Option<u32> {
         if let Event::EventTypeOne(matching_event) = event {
             return Some(matching_event.field_one)
@@ -43,7 +43,7 @@ impl Key<u32> for EventTypeOneFieldOne {
 
 pub struct EventTypeOneFieldTwo;
 
-impl Key<f32> for EventTypeOneFieldTwo {
+impl Key<Event, f32> for EventTypeOneFieldTwo {
     fn check(&self, event: &Event) -> Option<f32> {
         if let Event::EventTypeOne(matching_event) = event {
             return Some(matching_event.field_two)
@@ -55,7 +55,7 @@ impl Key<f32> for EventTypeOneFieldTwo {
 
 pub struct EventTypeTwoFieldTwo;
 
-impl Key<u32> for EventTypeTwoFieldTwo {
+impl Key<Event, u32> for EventTypeTwoFieldTwo {
     fn check(&self, event: &Event) -> Option<u32> {
         if let Event::EventTypeTwo(matching_event) = event {
             return Some(matching_event.field_two)
@@ -65,13 +65,13 @@ impl Key<u32> for EventTypeTwoFieldTwo {
     }
 }
 
-pub struct EventWithTimestamp {
-    event: Event,
+pub struct EventWithTimestamp<E> {
+    event: E,
     timestamp: SystemTime,
 }
 
-impl EventWithTimestamp {
-    fn new(event: Event, timestamp: SystemTime) -> Self {
+impl<E> EventWithTimestamp<E> {
+    fn new(event: E, timestamp: SystemTime) -> Self {
         EventWithTimestamp {
             event,
             timestamp,

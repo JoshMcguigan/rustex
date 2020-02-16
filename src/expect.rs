@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::{Duration, SystemTime}};
+use std::{fmt::Display, marker::PhantomData, time::{Duration, SystemTime}};
 
 use crate::{Condition, ConditionState, EventWithTimestamp};
 
@@ -9,22 +9,23 @@ pub enum ExpectState {
     Unknown,
 }
 
-pub trait Expect {
-    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState;
+pub trait Expect<E> {
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp<E>) -> ExpectState;
 }
 
-pub struct ContinuousExpect<D, G, T>
-    where D: Display, G: Condition, T: Condition
+pub struct ContinuousExpect<D, E, G, T>
+    where D: Display, G: Condition<E>, T: Condition<E>
 {
     description: D,
     given: G,
     given_satisfied_time: Option<SystemTime>,
     then: T,
     state: ExpectState,
+    marker: PhantomData<E>,
 }
 
-pub struct TriggeredExpect<D, G, W, T>
-    where D: Display, G: Condition, W: Condition, T: Condition
+pub struct TriggeredExpect<D, E, G, W, T>
+    where D: Display, G: Condition<E>, W: Condition<E>, T: Condition<E>
 {
     description: D,
     given: G,
@@ -32,12 +33,13 @@ pub struct TriggeredExpect<D, G, W, T>
     when: W,
     then: T,
     state: ExpectState,
+    marker: PhantomData<E>,
 }
 
-impl<D, G, T> Expect for ContinuousExpect<D, G, T>
-    where D: Display, G: Condition, T: Condition
+impl<D, E, G, T> Expect<E> for ContinuousExpect<D, E, G, T>
+    where D: Display, G: Condition<E>, T: Condition<E>
 {
-    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState {
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp<E>) -> ExpectState {
         let grace_period = Duration::from_millis(5);
 
         let EventWithTimestamp { event, timestamp } = event_with_ts;
@@ -71,10 +73,10 @@ impl<D, G, T> Expect for ContinuousExpect<D, G, T>
     }
 }
 
-impl<D, G, W, T> Expect for TriggeredExpect<D, G, W, T>
-    where D: Display, G: Condition, W: Condition, T: Condition
+impl<D, E, G, W, T> Expect<E> for TriggeredExpect<D, E, G, W, T>
+    where D: Display, G: Condition<E>, W: Condition<E>, T: Condition<E>
 {
-    fn process_event(&mut self, event_with_ts: &EventWithTimestamp) -> ExpectState {
+    fn process_event(&mut self, event_with_ts: &EventWithTimestamp<E>) -> ExpectState {
         unimplemented!()
     }
 }
@@ -83,15 +85,21 @@ pub struct ExpectDescription<D> {
     description: D,
 }
 
-pub struct ExpectDescriptionGiven<D, G> {
+pub struct ExpectDescriptionGiven<D, E, G>
+    where G: Condition<E>
+{
     description: D,
     given: G,
+    marker: PhantomData<E>,
 }
 
-pub struct ExpectDescriptionGivenWhen<D, G, W> {
+pub struct ExpectDescriptionGivenWhen<D, E, G, W>
+    where G: Condition<E>
+{
     description: D,
     given: G,
     when: W,
+    marker: PhantomData<E>,
 }
 
 pub fn verify<D>(description: D) -> ExpectDescription<D> {
@@ -101,19 +109,22 @@ pub fn verify<D>(description: D) -> ExpectDescription<D> {
 }
 
 impl<D> ExpectDescription<D> {
-    pub fn given<G>(self, given: G) -> ExpectDescriptionGiven<D, G> {
+    pub fn given<G, E>(self, given: G) -> ExpectDescriptionGiven<D, E, G>
+        where G: Condition<E>
+    {
         ExpectDescriptionGiven {
             description: self.description,
             given,
+            marker: PhantomData,
         }
     }
 }
 
-impl<D, G> ExpectDescriptionGiven<D, G>
-    where D: Display, G: Condition
+impl<D, E, G> ExpectDescriptionGiven<D, E, G>
+    where D: Display, G: Condition<E>
 {
-    pub fn then<T>(self, then: T) -> ContinuousExpect<D, G, T>
-        where T: Condition
+    pub fn then<T>(self, then: T) -> ContinuousExpect<D, E, G, T>
+        where T: Condition<E>
     {
         ContinuousExpect {
             description: self.description,
@@ -121,23 +132,27 @@ impl<D, G> ExpectDescriptionGiven<D, G>
             given_satisfied_time: None,
             then,
             state: ExpectState::Unknown,
+            marker: PhantomData,
         }
     }
 
-    pub fn when<W>(self, when: W) -> ExpectDescriptionGivenWhen<D, G, W> {
+    pub fn when<W>(self, when: W) -> ExpectDescriptionGivenWhen<D, E, G, W>
+        where W: Condition<E>
+    {
         ExpectDescriptionGivenWhen {
             description: self.description,
             given: self.given,
             when,
+            marker: PhantomData,
         }
     }
 }
 
-impl<D, G, W> ExpectDescriptionGivenWhen<D, G, W>
-    where D: Display, G: Condition, W: Condition
+impl<D, E, G, W> ExpectDescriptionGivenWhen<D, E, G, W>
+    where D: Display, G: Condition<E>, W: Condition<E>
 {
-    pub fn then<T>(self, then: T) -> TriggeredExpect<D, G, W, T>
-        where T: Condition
+    pub fn then<T>(self, then: T) -> TriggeredExpect<D, E, G, W, T>
+        where T: Condition<E>
     {
         TriggeredExpect {
             description: self.description,
@@ -146,6 +161,7 @@ impl<D, G, W> ExpectDescriptionGivenWhen<D, G, W>
             when: self.when,
             then,
             state: ExpectState::Unknown,
+            marker: PhantomData,
         }
     }
 }
