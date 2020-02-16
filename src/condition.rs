@@ -10,6 +10,31 @@ pub enum ConditionState {
 
 pub trait Condition<E> {
     fn process_event(&mut self, event: &E) -> ConditionState;
+
+    fn and<O>(self, other: O) -> And<Self, O>
+        where O: Condition<E>, Self: Sized
+    {
+        And {
+            cond_1: self,
+            cond_2: other,
+        }
+    }
+}
+
+pub struct And<A, B> {
+    cond_1: A,
+    cond_2: B,
+}
+
+impl<A, B, E> Condition<E> for And<A, B>
+    where A: Condition<E>, B: Condition<E>
+{
+    fn process_event(&mut self, event: &E) -> ConditionState {
+        match (self.cond_1.process_event(event), self.cond_2.process_event(event)) {
+            (ConditionState::Satisfied, ConditionState::Satisfied) => ConditionState::Satisfied,
+            (_, _) => ConditionState::Unsatisfied,
+        }
+    }
 }
 
 pub struct Eq<E, K, T>
@@ -108,6 +133,21 @@ mod tests {
         TestEvent::TestEventTwo(TestEventTwo { field_a })
     }
 
+    struct AlwaysSatisfied;
+    struct AlwaysUnsatisfied;
+
+    impl Condition<TestEvent> for AlwaysSatisfied {
+        fn process_event(&mut self, _event: &TestEvent) -> ConditionState {
+            ConditionState::Satisfied
+        }
+    }
+
+    impl Condition<TestEvent> for AlwaysUnsatisfied {
+        fn process_event(&mut self, _event: &TestEvent) -> ConditionState {
+            ConditionState::Unsatisfied
+        }
+    }
+
     #[test]
     fn equal() {
         let mut condition = eq(Event1FieldA, 5);
@@ -126,5 +166,20 @@ mod tests {
 
         // returns to unsatisfied upon seeing related event with incorrect value
         assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_one(1, 1)));
+    }
+
+    #[test]
+    fn and() {
+        let mut condition = AlwaysSatisfied.and(AlwaysSatisfied);
+        assert_eq!(ConditionState::Satisfied, condition.process_event(&example_event_two(1)));
+
+        let mut condition = AlwaysSatisfied.and(AlwaysUnsatisfied);
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_two(1)));
+
+        let mut condition = AlwaysUnsatisfied.and(AlwaysSatisfied);
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_two(1)));
+
+        let mut condition = AlwaysUnsatisfied.and(AlwaysUnsatisfied);
+        assert_eq!(ConditionState::Unsatisfied, condition.process_event(&example_event_two(1)));
     }
 }
