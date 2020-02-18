@@ -1,4 +1,5 @@
-use crate::{verify, eq, Condition, Event, Expect, EventTypeOneFieldOne, EventTypeOneFieldTwo, EventTypeTwoFieldTwo};
+use crate::{verify, eq, Condition, Expect};
+use crate::event_defs::{Event, EventTypeOneFieldOne, EventTypeOneFieldTwo, EventTypeTwoFieldTwo};
 
 pub fn example_continuous_expectation() -> impl Expect<Event> {
     verify("My first continuous expect")
